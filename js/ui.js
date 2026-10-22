@@ -43,6 +43,10 @@ const P = {
   backspace: '<path d="M9 5.5h10.5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9L3 12z"/><path d="m11.5 9.5 5 5M16.5 9.5l-5 5"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.1"/>',
   heart: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/>',
+  ball: '<circle cx="12" cy="12" r="8.6"/><path d="m12 8.2 3.3 2.4-1.3 3.9H10l-1.3-3.9z"/><path d="M12 3.4v4.8M15.3 10.6l4.4-1.5M14 14.5l2.7 3.8M10 14.5l-2.7 3.8M8.7 10.6 4.3 9.1"/>',
+  scale: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8 9.5a5.5 5.5 0 0 1 8 0"/><path d="m12 11.5 1.6-2.6"/>',
+  star: '<path d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.6L12 16.5l-5.1 2.7 1-5.6-4.1-4 5.7-.8z"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
   bed: '<path d="M3.5 19v-12"/><path d="M3.5 15.5h17V19"/><path d="M20.5 15.5v-3a3 3 0 0 0-3-3h-7v6"/><circle cx="7" cy="11.5" r="1.8"/>',
 };
 export function icon(name, cls = '') {
@@ -159,9 +163,9 @@ export function moonSVG(phase, cls = '') {
 export function logoSVG(cls = 'logo') {
   return `<svg class="${cls}" viewBox="0 0 96 96" aria-hidden="true">
     <circle cx="48" cy="48" r="30" fill="url(#logoGlow)"/>
-    <path d="M60.5 66.5A26 26 0 1 1 41.8 21.4a20.5 20.5 0 0 0 18.7 45.1z" fill="url(#moonLit)"/>
-    <path d="M67 26l1.6 4.4L73 32l-4.4 1.6L67 38l-1.6-4.4L61 32l4.4-1.6z" style="fill:var(--moon)"/>
-    <circle cx="75" cy="47" r="1.8" style="fill:var(--moon);opacity:.8"/>
+    <path d="M60.5 66.5A26 26 0 1 1 41.8 21.4a20.5 20.5 0 0 0 18.7 45.1z" fill="url(#logoMoon)"/>
+    <path d="M67 26l1.6 4.4L73 32l-4.4 1.6L67 38l-1.6-4.4L61 32l4.4-1.6z" style="fill:var(--logo-star)"/>
+    <circle cx="75" cy="47" r="1.8" style="fill:var(--logo-star);opacity:.8"/>
   </svg>`;
 }
 export function starsHTML(n = 14, seed = 7) {
@@ -203,6 +207,16 @@ export function openSheet({ title = '', body = '', cls = '', onClose = null } = 
       wrap.querySelector('.sheet-title').textContent = t;
     },
   };
+  // Ein Sheet, das gerade zugeht, schluckt weitere Tipps (sonst trägt ein Doppeltipp doppelt ein)
+  wrap.addEventListener(
+    'click',
+    (e) => {
+      if (!api.closed) return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true,
+  );
   wrap.addEventListener('click', (e) => {
     if (e.target.closest('[data-sheet-close]')) {
       e.preventDefault();
@@ -486,5 +500,6 @@ export async function openPhotoViewer(date) {
 export const DEFS = `<svg class="defs" aria-hidden="true" focusable="false"><defs>
   <radialGradient id="faceShine" cx="34%" cy="26%" r="78%"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></radialGradient>
   <radialGradient id="moonLit" cx="38%" cy="32%" r="78%"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e3d6b4"/></radialGradient>
-  <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#f5efdc" stop-opacity=".22"/><stop offset="1" stop-color="#f5efdc" stop-opacity="0"/></radialGradient>
+  <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%"><stop offset="0" style="stop-color:var(--logo-a);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--logo-a);stop-opacity:0"/></radialGradient>
+  <linearGradient id="logoMoon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--logo-a)"/><stop offset="1" style="stop-color:var(--logo-b)"/></linearGradient>
 </defs></svg>`;

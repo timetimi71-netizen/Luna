@@ -1,6 +1,6 @@
 // Luna · Start, Navigation, Ereignisse, Service Worker
 import { S, loadAll, flushWrites, hooks } from './store.js';
-import { $, toast, haptic, today, countUp, reduceMotion, IS_PREVIEW } from './util.js';
+import { $, toast, haptic, today, countUp, reduceMotion, legacyBar, IS_PREVIEW } from './util.js';
 import { icon, hydratePhotos, DEFS, topSheet } from './ui.js';
 import { actions, inputs, changes, act, app } from './app.js';
 import * as todayView from './views/today.js';
@@ -8,15 +8,17 @@ import * as calendarView from './views/calendar.js';
 import * as journalView from './views/journal.js';
 import * as sleepView from './views/sleep.js';
 import * as statsView from './views/stats.js';
+import * as foodView from './views/food.js';
 import { applySettings, showLock, showOnboarding } from './settings.js';
 import { stopDictation } from './speech.js';
 import { loadDemo } from './demo.js';
 
-const VIEWS = { today: todayView, calendar: calendarView, journal: journalView, sleep: sleepView, stats: statsView };
+const VIEWS = { today: todayView, calendar: calendarView, journal: journalView, food: foodView, sleep: sleepView, stats: statsView };
 const TABS = [
   ['today', 'Heute', 'today'],
   ['calendar', 'Kalender', 'calendar'],
   ['journal', 'Journal', 'journal'],
+  ['food', 'Essen', 'apple'],
   ['sleep', 'Schlaf', 'moon'],
   ['stats', 'Statistik', 'stats'],
 ];
@@ -195,6 +197,7 @@ function registerSW() {
 
 async function boot() {
   shell();
+  if (legacyBar()) document.documentElement.classList.add('legacy-bar');
   wire();
   hooks.onError = () => toast('Speichern hat nicht geklappt. Ist der Speicher deines iPhones voll?', { ms: 6000 });
   await loadAll();

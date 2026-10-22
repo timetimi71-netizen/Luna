@@ -115,6 +115,20 @@ export function slug(s) {
 
 export const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const IS_STANDALONE = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+/* Vor Version 1.1 wurde Luna mit dunkler, durchsichtiger Statusleiste installiert (weiße Uhr). iOS merkt sich das
+   bis zur Neuinstallation. Erkennbar daran, dass der Inhalt unter die Statusleiste reicht. */
+let legacy = null;
+export function legacyBar() {
+  if (legacy != null) return legacy;
+  legacy = false;
+  if (!IS_IOS || !IS_STANDALONE || !document.body) return legacy;
+  const p = document.createElement('div');
+  p.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none';
+  document.body.appendChild(p);
+  legacy = p.getBoundingClientRect().height > 0;
+  p.remove();
+  return legacy;
+}
 // In der claude.ai-Vorschau läuft die App eingebettet – dort gibt es kein Mikrofon, keinen Service Worker und keinen Kalender-Export.
 export const IS_PREVIEW = (() => {
   try {
@@ -219,7 +233,7 @@ export function countUp(root) {
     const to = parseFloat(el.dataset.count);
     if (!Number.isFinite(to) || to === 0) return;
     const dec = Number(el.dataset.dec || 0);
-    const fmt = (v) => (dec ? fmtNum(v, dec) : String(Math.round(v)));
+    const fmt = (v) => fmtNum(dec ? v : Math.round(v), dec);
     const t0 = performance.now();
     const dur = 1000;
     const tick = (now) => {

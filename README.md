@@ -1,6 +1,6 @@
 # Luna
 
-Tagebuch-App fürs iPhone: Abend-Journal mit Smileys und Spracheingabe, Schlaf-Kalender, Termine mit Erinnerung über den iPhone-Kalender und Statistik.
+Tagebuch-App fürs iPhone: Abend-Journal mit Smileys und Spracheingabe, Schlaf-Kalender, Termine mit Erinnerung über den iPhone-Kalender, Essen mit Kalorienziel zum Zunehmen und Statistik.
 
 Luna ist eine Web-App. Sie läuft offline und speichert alle Einträge nur auf dem Gerät, nichts davon landet in diesem Repository.
 
@@ -13,6 +13,12 @@ Luna ist eine Web-App. Sie läuft offline und speichert alle Einträge nur auf d
 ## Updates
 
 Neue Versionen lädt die App beim nächsten Öffnen. Oben erscheint dann „Eine neue Version von Luna ist da“ mit dem Knopf **Aktualisieren**.
+
+## Essen per Foto
+
+Die Nährwert-Schätzung per Foto oder Beschreibung läuft über die kostenlose Gemini-API von Google.
+Den Schlüssel gibt es unter [aistudio.google.com](https://aistudio.google.com/apikey) („Create API key“). Er wird in Luna unter **Essen → Foto** eingefügt und bleibt nur auf dem iPhone, auch nicht im Backup.
+Ohne Schlüssel funktionieren die Lebensmittel-Liste und die schnelle Eingabe trotzdem.
 
 ## Backup
 

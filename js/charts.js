@@ -1,5 +1,5 @@
 // Luna · Diagramme als SVG (Balken für Schlaf, Linie für Smiley-Verläufe)
-import { esc, fmtNum } from './util.js';
+import { esc, fmtNum, fromISO } from './util.js';
 import { faceInner } from './ui.js';
 
 const W = 340;
@@ -100,5 +100,44 @@ export function lineChart({ values, labels = [], height = 176 }) {
   labels.forEach((l) => {
     s += `<text x="${x(l.i).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="${l.hl ? 'hl' : ''}">${esc(l.text)}</text>`;
   });
+  return `${s}</svg>`;
+}
+
+/* Gewicht: Punkte [{date, kg}], optional Zielgewicht als gestrichelte Linie */
+export function weightChart({ points, goal = null, height = 150 }) {
+  const H = height;
+  const padL = 34;
+  const padR = 10;
+  const padT = 12;
+  const padB = 22;
+  const t0 = fromISO(points[0].date).getTime();
+  const t1 = fromISO(points[points.length - 1].date).getTime();
+  const span = Math.max(1, t1 - t0);
+  const kgs = points.map((p) => p.kg);
+  let lo = Math.min(...kgs);
+  let hi = Math.max(...kgs);
+  if (goal != null && goal - hi < 3) hi = Math.max(hi, goal);
+  const pad = Math.max(0.5, (hi - lo) * 0.15);
+  lo = Math.floor((lo - pad) * 2) / 2;
+  hi = Math.ceil((hi + pad) * 2) / 2;
+  const x = (t) => padL + ((W - padL - padR) * (t - t0)) / span;
+  const y = (kg) => padT + (H - padT - padB) * (1 - (kg - lo) / (hi - lo));
+  const step = hi - lo > 6 ? 2 : hi - lo > 3 ? 1 : 0.5;
+  let s = `<svg class="chart wchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf">`;
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+    const yy = y(v).toFixed(1);
+    s += `<line class="gridl" x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/><text x="${padL - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end">${fmtNum(v, step < 1 ? 1 : 0)}</text>`;
+  }
+  if (goal != null && goal >= lo && goal <= hi) {
+    const gy = y(goal).toFixed(1);
+    s += `<line class="target" x1="${padL}" x2="${W - padR}" y1="${gy}" y2="${gy}"/><text class="target-t" x="${W - padR}" y="${(y(goal) - 5).toFixed(1)}" text-anchor="end">Ziel ${fmtNum(goal, goal % 1 ? 1 : 0)} kg</text>`;
+  }
+  const pts = points.map((p) => [x(fromISO(p.date).getTime()), y(p.kg)]);
+  if (pts.length > 1) s += `<path class="line-path" d="${monotonePath(pts)}" pathLength="1"/>`;
+  pts.forEach(([px, py], i) => {
+    if (i === pts.length - 1 || pts.length <= 16) s += `<circle class="line-dot wdot" style="--i:${i}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${i === pts.length - 1 ? 4.5 : 3}"/>`;
+  });
+  const fmtD = (iso) => { const d = fromISO(iso); return `${d.getDate()}.${d.getMonth() + 1}.`; };
+  s += `<text x="${padL}" y="${H - 5}" text-anchor="start">${fmtD(points[0].date)}</text><text x="${W - padR}" y="${H - 5}" text-anchor="end">${fmtD(points[points.length - 1].date)}</text>`;
   return `${s}</svg>`;
 }

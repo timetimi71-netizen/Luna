@@ -1,5 +1,5 @@
 // Luna · Beispieldaten zum Ausprobieren (alle mit demo: true markiert, lassen sich wieder entfernen)
-import { S, putMany, saveSettings, sleepHours } from './store.js';
+import { S, putMany, saveSettings, sleepHours, reindexFood } from './store.js';
 import { today, addDays, fromISO, fromMin, clamp } from './util.js';
 
 function rng(seed) {
@@ -51,6 +51,43 @@ const GOOD = [
 ];
 const BETTER = ['Weniger am Handy hängen', 'Früher ins Bett', 'Mehr Wasser trinken', 'Mittags kurz rausgehen', 'Nicht so viel Süßes', 'Öfter Pausen machen'];
 const SPORTS = ['Laufen', 'Gym', 'Radfahren', 'Spazieren', 'Fußball', 'Yoga', 'Schwimmen'];
+
+// Beispiel-Mahlzeiten mit realistischen Werten
+const M = (name, amount, kcal, p, c, f) => ({ name, amount, kcal, p, c, f });
+const BREAKFAST = [
+  M('Haferflocken mit Milch und Banane', '80 g Haferflocken, 250 ml Milch', 565, 20, 89, 15),
+  M('Brötchen mit Nuss-Nougat-Creme', '2 Brötchen', 480, 12, 78, 13),
+  M('Rührei mit Toast', '3 Eier, 2 Scheiben Toast', 430, 24, 26, 25),
+  M('Müsli mit Joghurt', '60 g Müsli, 200 g Joghurt', 360, 13, 48, 12),
+];
+const LUNCH = [
+  M('Nudeln Bolognese', 'großer Teller', 780, 34, 96, 26),
+  M('Döner Kebab', '1 Döner', 860, 44, 80, 40),
+  M('Hähnchen mit Reis und Gemüse', '1 Teller', 640, 46, 78, 14),
+  M('Schnitzel mit Pommes', '1 Portion', 1080, 50, 99, 54),
+  M('Lasagne', '1 Portion', 620, 28, 52, 32),
+];
+const DINNER = [
+  M('Pizza Salami', '1 ganze Pizza', 1040, 44, 112, 46),
+  M('Brot mit Käse und Wurst', '3 Scheiben', 620, 28, 60, 28),
+  M('Wraps mit Hähnchen', '2 Wraps', 720, 42, 70, 28),
+  M('Spaghetti mit Pesto', '1 Teller', 690, 20, 88, 28),
+  M('Reis mit Hähnchen-Curry', '1 Teller', 760, 40, 92, 24),
+];
+const SNACKS = [
+  M('Banane', '1 Stück', 112, 1.4, 24, 0.2),
+  M('Handvoll Nüsse', '50 g', 310, 9, 6, 27),
+  M('Proteinriegel', '1 Riegel', 219, 19, 18, 7),
+  M('Milchschokolade', '50 g', 268, 3.5, 28, 15.5),
+  M('Apfel', '1 Stück', 78, 0.4, 17, 0.2),
+];
+const EXTRA = [
+  M('Toast mit Erdnussbutter', '2 Scheiben, 2 EL Erdnussbutter', 310, 12, 28, 17),
+  M('Käsebrot mit Butter', '2 Scheiben', 445, 17, 44, 22),
+  M('Glas Vollmilch', '250 ml', 160, 8.5, 12, 8.8),
+  M('Griechischer Joghurt mit Honig', '200 g, 1 EL Honig', 300, 7, 23, 20),
+];
+const SHAKE = M('Zunehm-Shake', '400 ml Milch, 50 g Haferflocken, 1 Banane, 2 EL Erdnussbutter', 740, 29, 76, 33);
 
 export async function loadDemo() {
   const r = rng(20261022);
@@ -124,11 +161,55 @@ export async function loadDemo() {
     { id: 'demo-training', title: 'Fußballtraining', date: tuesday, start: '19:00', end: '20:30', location: 'Sportplatz Nord', alarm: 'm60', color: 'gruen', repeat: 'weekly' },
   ].map((e) => ({ allDay: false, location: '', notes: '', repeat: 'none', ...e, demo: true, updatedAt: now }));
 
+  // Essen: die letzten 6 Wochen, heute bis zum Nachmittag
+  const n = S.settings.nutrition;
+  const trainingDays = n.setup ? n.trainingDays || [] : [2, 4, 6];
+  const food = [];
+  const add = (d, time, meal, x, extra = {}) =>
+    food.push({ id: `demo-f-${d}-${food.length}`, date: d, time, meal, ...x, source: 'liste', demo: true, createdAt: now, updatedAt: now, ...extra });
+  for (let i = 42; i >= 0; i--) {
+    const d = addDays(t, -i);
+    const training = trainingDays.includes(fromISO(d).getDay());
+    if (r() < 0.9) add(d, '07:40', 'fruehstueck', pick(BREAKFAST));
+    if (r() < 0.6) add(d, '07:45', 'fruehstueck', M('Glas Vollmilch', '250 ml', 160, 8.5, 12, 8.8));
+    if (r() < 0.95) add(d, '12:50', 'mittag', pick(LUNCH));
+    if (r() < 0.8) add(d, '16:10', 'snack', pick(SNACKS));
+    if (i === 0) continue;
+    // in den letzten Wochen klappt es besser
+    if (r() < 0.5 + (42 - i) / 90) add(d, '10:15', 'snack', pick(EXTRA));
+    if (training && r() < 0.85) add(d, '21:30', 'snack', SHAKE, { source: 'fav' });
+    if (r() < 0.95) add(d, '19:20', 'abend', pick(DINNER));
+    if (r() < 0.6) add(d, '22:00', 'snack', pick(r() < 0.5 ? EXTRA : SNACKS));
+  }
+  // Gewicht: zweimal pro Woche, langsam steigend
+  const weights = [];
+  for (let i = 84; i >= 0; i--) {
+    const d = addDays(t, -i);
+    const wd = fromISO(d).getDay();
+    if (wd !== 1 && wd !== 4) continue;
+    const kg = 57.2 + ((84 - i) / 7) * 0.2 + gauss() * 0.25;
+    weights.push({ date: d, kg: Math.round(kg * 10) / 10, demo: true, updatedAt: now });
+  }
+  const fav = { id: 'demo-fav-shake', type: 'fav', ...SHAKE, uses: 6, demo: true, createdAt: now, updatedAt: now };
+
   journal.forEach((e) => S.journal.set(e.date, e));
   sleep.forEach((e) => S.sleep.set(e.date, e));
   events.forEach((e) => S.events.set(e.id, e));
+  food.forEach((e) => S.food.set(e.id, e));
+  weights.forEach((e) => {
+    if (!S.weights.has(e.date)) S.weights.set(e.date, e);
+  });
+  S.foodlib.set(fav.id, fav);
+  reindexFood();
   await putMany('journal', journal);
   await putMany('sleep', sleep);
   await putMany('events', events);
-  await saveSettings({ demoLoaded: true });
+  await putMany('food', food);
+  await putMany('weights', weights.filter((w) => S.weights.get(w.date) === w));
+  await putMany('foodlib', [fav]);
+  const patch = { demoLoaded: true };
+  if (!n.setup) {
+    patch.nutrition = { ...n, setup: true, demo: true, sex: 'm', age: 21, height: 182, startWeight: 57.2, goalWeight: 66, activity: 'normal', trainingDays: [2, 4, 6], trainingKcal: 600, surplus: 400 };
+  }
+  await saveSettings(patch);
 }

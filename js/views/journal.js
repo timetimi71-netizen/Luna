@@ -36,6 +36,7 @@ import {
 } from '../util.js';
 import { act, onInput, onChange, app } from '../app.js';
 import { toggleDictation, stopDictation } from '../speech.js';
+import { isSetUp, progress, kcalStatus, totals, fmtKcal } from '../nutrition.js';
 
 let date = journalDate();
 
@@ -124,6 +125,13 @@ function sleepLink() {
   return `<button type="button" class="mini-link add" data-act="sleep-edit" data-date="${date}">${icon('plus')}Schlafdauer</button>`;
 }
 
+function foodLink() {
+  const t = totals(date);
+  if (!t.n) return isSetUp() ? `<button type="button" class="mini-link add" data-act="go" data-to="food" data-date="${date}">${icon('plus')}Essen eintragen</button>` : '';
+  const kp = progress(date);
+  return `<button type="button" class="mini-link ${kp != null ? `st-${kcalStatus(kp)}` : ''}" data-act="go" data-to="food" data-date="${date}"><i class="sdot"></i>${fmtKcal(t.kcal)} kcal</button>`;
+}
+
 function ratingsCard(e) {
   const cats = CATS.filter((c) => c.id !== 'tag' && S.settings.cats[c.id] !== false);
   if (!cats.length) return '';
@@ -134,7 +142,7 @@ function ratingsCard(e) {
         <div class="rate-info">
           <div class="rate-name">${icon(c.icon)}${c.name}</div>
           <div class="rate-label ${v ? `lv${v}` : ''}">${v ? LABELS[c.id][v - 1] : 'Noch offen'}</div>
-          ${c.id === 'schlaf' ? sleepLink() : ''}
+          ${c.id === 'schlaf' ? sleepLink() : ''}${c.id === 'ernaehrung' ? foodLink() : ''}
         </div>
         ${facesHTML(c.id, v, { date })}
       </div>`;

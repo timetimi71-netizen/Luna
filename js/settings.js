@@ -10,6 +10,8 @@ import {
   pinPad,
   logoSVG,
   starsHTML,
+  segHTML,
+  setSeg,
   CATS,
 } from './ui.js';
 import {
@@ -31,8 +33,10 @@ import { act, onInput, onChange, app } from './app.js';
 import { reminderICS, openInCalendar, saveFile } from './ics.js';
 import { stopDictation } from './speech.js';
 import { loadDemo } from './demo.js';
+import { isSetUp, targets, fmtKcal } from './nutrition.js';
+import { openSetup, openKeySheet } from './views/food.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 const ACCENTS = [
   ['mond', '#8fa3ff', 'Mond'],
@@ -43,14 +47,24 @@ const ACCENTS = [
 ];
 const EMOJIS = ['📖', '🧘', '🌿', '📵', '💊', '🏃', '🥗', '🚰', '🛏️', '🙏', '✍️', '🎸', '🧹', '☀️', '🚭', '💤'];
 
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 export function applySettings() {
   const st = S.settings;
   const root = document.documentElement;
   if (st.accent && st.accent !== 'mond') root.dataset.accent = st.accent;
   else delete root.dataset.accent;
+  const dark = st.look === 'dark' || (st.look === 'auto' && darkQuery.matches);
+  if (dark) root.dataset.look = 'dark';
+  else delete root.dataset.look;
+  // Statusleiste und Safari-Leisten passend zum Hintergrund einfärben
+  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg || (dark ? '#070a13' : '#f3f4f9')));
   root.classList.toggle('calm', !!st.reduceMotion);
   setHaptics(st.haptics !== false);
 }
+darkQuery.addEventListener?.('change', () => {
+  if (S.settings?.look === 'auto') applySettings();
+});
 
 /* ---------- Einstellungen ---------- */
 const sw = (id, on, attrs) => switchHTML(id, on, attrs);
@@ -85,6 +99,11 @@ function settingsHTML() {
 
     <div class="group-label">Aussehen</div>
     <div class="group">
+      <div class="li"><span class="li-title">Design</span><div class="look-seg">${segHTML('set-look', [
+        ['light', 'Hell'],
+        ['dark', 'Dunkel'],
+        ['auto', 'Automatisch'],
+      ], st.look || 'light', 'sm')}</div></div>
       <div class="li"><span class="li-main"><span class="li-title">Akzentfarbe</span></span>
         <div class="accent-row">${ACCENTS.map(
           ([k, c, name]) => `<button type="button" class="color ${st.accent === k ? 'on' : ''}" style="--c:${c}" data-act="set-accent" data-v="${k}" aria-label="${name}"></button>`,
@@ -129,6 +148,16 @@ function settingsHTML() {
         .join('')}
       <div class="li"><span class="li-ic">${icon('drop')}</span><span class="li-main"><span class="li-title">Wasserziel</span><span class="li-sub" id="set-water-sub">${st.waterGoal} Gläser à ${st.glassMl} ml</span></span>
         <div class="stepper"><button type="button" data-act="set-water" data-d="-1" aria-label="Ein Glas weniger">${icon('minus')}</button><output id="set-water-out">${st.waterGoal}</output><button type="button" data-act="set-water" data-d="1" aria-label="Ein Glas mehr">${icon('plus')}</button></div></div>
+    </div>
+
+    <div class="group-label" id="set-food">Ernährung</div>
+    <div class="group">
+      <button type="button" class="li" data-act="set-food-goal"><span class="li-ic">${icon('target')}</span><span class="li-main"><span class="li-title">Zunehm-Ziel</span><span class="li-sub">${
+        isSetUp() ? `${fmtKcal(targets().kcal)} kcal heute · Ziel ${st.nutrition.goalWeight ? `${String(st.nutrition.goalWeight).replace('.', ',')} kg` : 'offen'}` : 'Noch nicht eingerichtet'
+      }</span></span><span class="li-end">${icon('chevR')}</span></button>
+      <button type="button" class="li" data-act="set-food-key"><span class="li-ic">${icon('camera')}</span><span class="li-main"><span class="li-title">Foto-Erkennung (Gemini)</span><span class="li-sub">${
+        st.nutrition.geminiKey ? `Verbunden${st.nutrition.geminiModel ? ` · ${esc(st.nutrition.geminiModel)}` : ''}` : 'Nicht eingerichtet'
+      }</span></span><span class="li-end">${icon('chevR')}</span></button>
     </div>
 
     <div class="group-label" id="set-habits">Gewohnheiten</div>
@@ -206,8 +235,16 @@ function rerenderSettings() {
 }
 
 act('settings', (el) => openSettings(el.dataset.section));
+act('set-food-goal', () => openSetup({ onDone: rerenderSettings }));
+act('set-food-key', () => openKeySheet(null, rerenderSettings));
 const saveName = debounce((v) => saveSettings({ name: v }), 300);
 onInput('set-name', (el) => saveName(el.value.trim()));
+act('set-look', (el) => {
+  saveSettings({ look: el.dataset.v });
+  setSeg(el);
+  applySettings();
+  haptic();
+});
 act('set-accent', (el) => {
   saveSettings({ accent: el.dataset.v });
   applySettings();
@@ -317,7 +354,7 @@ export async function exportBackup() {
   sheet.body.innerHTML = `<div class="success">
     <div class="tip-ic" style="width:64px;height:64px;border-radius:20px">${icon('download', 'lg')}</div>
     <h3>Dein Backup ist bereit</h3>
-    <p class="muted">${data.journal.length} Einträge · ${data.sleep.length} Nächte · ${data.events.length} Termine · ${data.photos.length} Fotos · ${fmtBytes(blob.size)}</p>
+    <p class="muted">${data.journal.length} Einträge · ${data.sleep.length} Nächte · ${data.events.length} Termine · ${data.food.length} Mahlzeiten · ${data.photos.length + data.foodPics.length} Fotos · ${fmtBytes(blob.size)}</p>
     <button type="button" class="btn btn-primary btn-lg" id="bk-save">${icon('share')} Sichern</button>
     <p class="note">Wähle im nächsten Schritt „In Dateien sichern“, am besten in iCloud Drive. So kannst du alles auf einem neuen iPhone wiederherstellen.</p>
   </div>`;
@@ -354,14 +391,14 @@ onChange('backup-import', async (el) => {
   const when = data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('de-DE') : 'unbekannt';
   const ok = await confirmDialog({
     title: 'Backup wiederherstellen?',
-    text: `${data.journal?.length || 0} Einträge, ${data.sleep?.length || 0} Nächte, ${data.events?.length || 0} Termine und ${data.photos?.length || 0} Fotos vom ${when}. Einträge vom selben Tag werden ersetzt.`,
+    text: `${data.journal?.length || 0} Einträge, ${data.sleep?.length || 0} Nächte, ${data.events?.length || 0} Termine, ${data.food?.length || 0} Mahlzeiten und ${data.photos?.length || 0} Fotos vom ${when}. Einträge vom selben Tag werden ersetzt.`,
     ok: 'Wiederherstellen',
   });
   if (!ok) return;
   try {
     const r = await restoreBackup(data);
     applySettings();
-    toast(`Wiederhergestellt: ${r.journal} Einträge, ${r.photos} Fotos`, { icon: icon('check') });
+    toast(`Wiederhergestellt: ${r.journal} Einträge, ${r.food} Mahlzeiten, ${r.photos} Fotos`, { icon: icon('check') });
     rerenderSettings();
   } catch (e) {
     toast(e?.message || 'Wiederherstellen hat nicht geklappt.');

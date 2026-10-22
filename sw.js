@@ -1,5 +1,5 @@
 // Luna · Service Worker: hält die App offline bereit und liefert Kalender-Dateien aus.
-const VERSION = 'luna-1.0.0';
+const VERSION = 'luna-1.1.0';
 const ASSETS = [
   './',
   './index.html',
@@ -15,6 +15,10 @@ const ASSETS = [
   './js/speech.js',
   './js/demo.js',
   './js/settings.js',
+  './js/nutrition.js',
+  './js/gemini.js',
+  './js/foods.js',
+  './js/views/food.js',
   './js/views/today.js',
   './js/views/calendar.js',
   './js/views/journal.js',

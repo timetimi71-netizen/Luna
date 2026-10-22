@@ -18,11 +18,14 @@ import {
   IS_IOS,
   IS_STANDALONE,
   IS_PREVIEW,
+  legacyBar,
   toast,
   haptic,
 } from '../util.js';
 import { act } from '../app.js';
 import { agendaItem } from './calendar.js';
+import { ringSVG } from './food.js';
+import { isSetUp, targets, totals, fmtKcal, nut } from '../nutrition.js';
 
 function greeting(h) {
   if (h < 5) return 'Gute Nacht';
@@ -52,8 +55,10 @@ export function render() {
     </div>
   </header>
   ${previewNote()}
+  ${reinstallTip()}
   ${hero()}
   <div class="row2">${streakTile()}${sleepTile()}</div>
+  ${foodCard()}
   ${eventsCard()}
   ${waterCard()}
   ${weekCard()}
@@ -113,6 +118,31 @@ function sleepTile() {
   return `<button type="button" class="card tile st-${st}" data-act="sleep-edit" data-date="${t}">
     <div class="tile-ic">${icon('moon')}</div><div class="tile-num">${fmtHM(e.hours)}<small>h</small></div>
     <div class="tile-label"><i class="sdot"></i>${STATUS_LABEL[st]}</div></button>`;
+}
+
+function foodCard() {
+  const d = journalDate();
+  if (!isSetUp()) {
+    return `<button type="button" class="card tip food-cta" data-act="go" data-to="food"><div class="tip-ic">${icon('apple')}</div><div>
+      <h3>Essen tracken und zunehmen</h3><p>Richte dein Kalorienziel ein. Dann siehst du hier jeden Tag, wie viel noch fehlt.</p></div><span class="x">${icon('chevR')}</span></button>`;
+  }
+  const t = targets(d);
+  const s = totals(d);
+  const p = s.kcal / t.kcal;
+  const left = t.kcal - s.kcal;
+  const cam =
+    nut().geminiKey && !IS_PREVIEW
+      ? `<label class="ft-cam" data-act="noop" aria-label="Essen fotografieren">${icon('camera')}<input type="file" accept="image/*" data-change="f-photo" data-date="${d}"></label>`
+      : `<button type="button" class="ft-cam" data-act="go" data-to="food" data-date="${d}" aria-label="Essen eintragen">${icon('plus')}</button>`;
+  return `<section class="card food-today">
+    <button type="button" class="ft-ring" data-act="go" data-to="food" data-date="${d}" aria-label="Essen öffnen">${ringSVG(p)}<span>${Math.round(Math.min(p, 9.99) * 100)} %</span></button>
+    <button type="button" class="ft-main" data-act="go" data-to="food" data-date="${d}">
+      <span class="eyebrow">${icon('apple')} Essen ${d === today() ? 'heute' : 'gestern'}</span>
+      <span class="ft-num"><b>${fmtKcal(s.kcal)}</b> / ${fmtKcal(t.kcal)} kcal</span>
+      <span class="ft-sub">${left > 0 ? `noch ${fmtKcal(left)} kcal` : 'Ziel geschafft'} · ${Math.round(s.p)} g Eiweiß${t.training ? ' · Trainingstag' : ''}</span>
+    </button>
+    ${cam}
+  </section>`;
 }
 
 function eventsCard() {
@@ -178,10 +208,29 @@ function memoryCard() {
 }
 
 function tip(id, ic, title, text, actions = '', dismissable = true) {
-  return `<section class="card tip" data-tip="${id}"><div class="tip-ic">${ic}</div><div><h3>${title}</h3><p>${text}</p>${
+  return `<section class="card tip" data-tip="${id}"><div class="tip-ic">${ic}</div><div><h3>${title}</h3><div class="tip-p">${text}</div>${
     actions ? `<div class="actions">${actions}</div>` : ''
   }</div>${dismissable ? `<button type="button" class="x" data-act="tip-x" data-tip="${id}" aria-label="Ausblenden">${icon('close')}</button>` : '<span></span>'}</section>`;
 }
+// Alte, dunkel installierte App: erklären, wie man das neue Icon bekommt, ohne Daten zu verlieren
+function reinstallTip() {
+  const st = S.settings;
+  if (IS_PREVIEW || !legacyBar() || st.reinstallHintDismissed) return '';
+  return tip(
+    'reinstall',
+    icon('sparkle'),
+    'Neues Icon holen',
+    `Luna ist jetzt hell. Das neue Icon und die helle Leiste oben gibt es erst, wenn du Luna einmal neu hinzufügst. So geht dabei nichts verloren:
+    <ol class="steps sm">
+      <li><span><b>Backup erstellen</b> und „In Dateien sichern“ wählen</span></li>
+      <li><span>Luna auf dem Home-Bildschirm gedrückt halten und <b>App entfernen</b></span></li>
+      <li><span>Die Luna-Seite in Safari öffnen, <b>Teilen</b> und <b>„Zum Home-Bildschirm“</b></span></li>
+      <li><span>In der neuen Luna: Einstellungen, <b>Backup wiederherstellen</b>${st.nutrition?.geminiKey ? ', danach den Gemini-Schlüssel neu einfügen' : ''}</span></li>
+    </ol>`,
+    '<button type="button" class="btn btn-soft btn-sm" data-act="backup">Backup erstellen</button>',
+  );
+}
+
 function tips() {
   if (IS_PREVIEW) return '';
   const st = S.settings;
@@ -224,7 +273,7 @@ act('moon', () => {
   haptic();
 });
 act('tip-x', (el) => {
-  const key = { install: 'installHintDismissed', reminder: 'reminderHintDismissed' }[el.dataset.tip];
+  const key = { install: 'installHintDismissed', reminder: 'reminderHintDismissed', reinstall: 'reinstallHintDismissed' }[el.dataset.tip];
   if (key) saveSettings({ [key]: true });
   const card = el.closest('.tip');
   card.style.transition = 'opacity .25s, transform .25s';
