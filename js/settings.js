@@ -38,7 +38,7 @@ import { openSetup, openKeySheet } from './views/food.js';
 import { openSetup as openSmokeSetup } from './views/smoke.js';
 import { isSetUp as smokeSetUp, phase as smokePhase, fmtMoney, costPerDay } from './smoke.js';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.2.1';
 
 const ACCENTS = [
   ['mond', '#8fa3ff', 'Mond'],

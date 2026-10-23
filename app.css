@@ -990,6 +990,8 @@ button.li:active { background: var(--surface-3); }
 .li-title { font-size: 16px; }
 .li > .li-title:not(.li-main) { flex: none; white-space: nowrap; }
 .li-sub { font-size: 13px; color: var(--text-3); line-height: 1.35; }
+.li-main > .li-title, .li-main > .li-sub { display: block; }
+.group-note { font-size: 13px; line-height: 1.45; color: var(--text-3); margin: -4px 4px 0; }
 .li-end { margin-left: auto; color: var(--text-3); display: flex; align-items: center; gap: 6px; flex: none; }
 .li-end .ic { width: 18px; height: 18px; }
 .li.danger { color: var(--danger); }

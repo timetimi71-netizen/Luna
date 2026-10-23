@@ -1,5 +1,5 @@
 // Luna · Service Worker: hält die App offline bereit und liefert Kalender-Dateien aus.
-const VERSION = 'luna-1.2.0';
+const VERSION = 'luna-1.2.1';
 const ASSETS = [
   './',
   './index.html',
@@ -38,7 +38,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     (async () => {
-      for (const k of await caches.keys()) if (k !== VERSION) await caches.delete(k);
+      // Nur eigene alte Caches löschen: Luna und Edge liegen auf derselben Adresse
+      for (const k of await caches.keys()) if (k.startsWith('luna-') && k !== VERSION) await caches.delete(k);
       await self.clients.claim();
     })(),
   );
