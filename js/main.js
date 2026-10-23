@@ -9,16 +9,18 @@ import * as journalView from './views/journal.js';
 import * as sleepView from './views/sleep.js';
 import * as statsView from './views/stats.js';
 import * as foodView from './views/food.js';
+import * as smokeView from './views/smoke.js';
 import { applySettings, showLock, showOnboarding } from './settings.js';
 import { stopDictation } from './speech.js';
 import { loadDemo } from './demo.js';
 
-const VIEWS = { today: todayView, calendar: calendarView, journal: journalView, food: foodView, sleep: sleepView, stats: statsView };
+const VIEWS = { today: todayView, calendar: calendarView, journal: journalView, food: foodView, smoke: smokeView, sleep: sleepView, stats: statsView };
 const TABS = [
   ['today', 'Heute', 'today'],
   ['calendar', 'Kalender', 'calendar'],
   ['journal', 'Journal', 'journal'],
   ['food', 'Essen', 'apple'],
+  ['smoke', 'Rauchfrei', 'nosmoke'],
   ['sleep', 'Schlaf', 'moon'],
   ['stats', 'Statistik', 'stats'],
 ];
@@ -31,12 +33,41 @@ function shell() {
     'afterbegin',
     `${DEFS}<div class="ambient" aria-hidden="true"></div>
     <main class="app" id="app"><div class="view" id="view"></div></main>
-    <nav class="tabbar" aria-label="Bereiche"><div class="tabbar-in" id="tabbar"><span class="tab-pill" id="tab-pill"></span>${TABS.map(
-      ([id, label, ic]) => `<button type="button" class="tab" data-tab="${id}">${icon(ic)}<span>${label}</span></button>`,
-    ).join('')}</div></nav>
+    <nav class="tabbar" aria-label="Bereiche"><div class="tabbar-in" id="tabbar"></div></nav>
     <div class="toasts" id="toasts"></div>`,
   );
 }
+
+// Essen und Rauchfrei lassen sich in den Einstellungen ausblenden
+const visibleTabs = () => TABS.filter(([id]) => S.settings?.tabs?.[id] !== false);
+function buildTabs() {
+  const tabs = visibleTabs();
+  const bar = $('#tabbar');
+  bar.style.setProperty('--tabs', tabs.length);
+  bar.classList.toggle('many', tabs.length > 6);
+  bar.innerHTML = `<span class="tab-pill" id="tab-pill"></span>${tabs
+    .map(([id, label, ic]) => `<button type="button" class="tab" data-tab="${id}">${icon(ic)}<span>${label}</span></button>`)
+    .join('')}`;
+  markTab();
+}
+function markTab() {
+  document.querySelectorAll('.tab').forEach((t) => {
+    const on = t.dataset.tab === current;
+    t.classList.toggle('on', on);
+    if (on) t.setAttribute('aria-current', 'page');
+    else t.removeAttribute('aria-current');
+  });
+  const i = visibleTabs().findIndex((t) => t[0] === current);
+  const pill = $('#tab-pill');
+  if (pill) {
+    pill.style.setProperty('--i', Math.max(0, i));
+    pill.style.opacity = i < 0 ? '0' : '';
+  }
+}
+app.rebuildTabs = () => {
+  buildTabs();
+  if (S.settings.tabs?.[current] === false) app.go('today', { instant: true });
+};
 
 function render({ animate = false } = {}) {
   const view = VIEWS[current];
@@ -54,13 +85,7 @@ function render({ animate = false } = {}) {
   view.mount?.(el);
   hydratePhotos(el);
   if (animate) countUp(el);
-  document.querySelectorAll('.tab').forEach((t) => {
-    const on = t.dataset.tab === current;
-    t.classList.toggle('on', on);
-    if (on) t.setAttribute('aria-current', 'page');
-    else t.removeAttribute('aria-current');
-  });
-  $('#tab-pill').style.setProperty('--i', TABS.findIndex((t) => t[0] === current));
+  markTab();
   renderedDay = today();
 }
 
@@ -202,6 +227,7 @@ async function boot() {
   hooks.onError = () => toast('Speichern hat nicht geklappt. Ist der Speicher deines iPhones voll?', { ms: 6000 });
   await loadAll();
   applySettings();
+  buildTabs();
   if (IS_PREVIEW && !S.settings.demoLoaded && S.journal.size === 0) await loadDemo();
   if (S.settings.pinHash) showLock();
   app.go('today', { instant: true });

@@ -48,6 +48,12 @@ const P = {
   star: '<path d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.6L12 16.5l-5.1 2.7 1-5.6-4.1-4 5.7-.8z"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
   bed: '<path d="M3.5 19v-12"/><path d="M3.5 15.5h17V19"/><path d="M20.5 15.5v-3a3 3 0 0 0-3-3h-7v6"/><circle cx="7" cy="11.5" r="1.8"/>',
+  nosmoke: '<path d="M3.5 13.5h11.5M18 13.5h2.5v3.5H17M3.5 13.5v3.5h10"/><path d="M17.5 4.5c-1.2.9-1.2 2.3 0 3.2s1.2 2.3 0 3.2"/><path d="M3.5 3.5l17 17"/>',
+  wind: '<path d="M3.5 8.5h10a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3.5 12.5h15a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3.5 16.5h6.5"/>',
+  coin: '<circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.2a3 3 0 0 0-2.6-1.2c-1.5 0-2.7.8-2.7 2s1.2 1.7 2.7 2 2.7.8 2.7 2-1.2 2-2.7 2a3.1 3.1 0 0 1-2.7-1.3"/><path d="M12 6.5V8M12 16v1.5"/>',
+  gift: '<rect x="4" y="9" width="16" height="11.5" rx="2"/><path d="M3 9h18"/><path d="M12 9v11.5"/><path d="M12 9C10.5 5.5 6.8 5 6.8 7.1 6.8 8.6 9.5 9 12 9zM12 9c1.5-3.5 5.2-4 5.2-1.9 0 1.5-2.7 1.9-5.2 1.9z"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  trophy: '<path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 6H4.5a3 3 0 0 0 3.3 4M16.5 6h3a3 3 0 0 1-3.3 4"/><path d="M12 13.5V17"/><path d="M8.5 20.5h7l-.8-3.5H9.3z"/>',
 };
 export function icon(name, cls = '') {
   return `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;

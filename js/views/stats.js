@@ -1,12 +1,15 @@
 // Luna · Statistik: Kennzahlen, Verlauf, Durchschnitte, Zusammenhänge, Jahr in Pixeln
-import { S, avg, rating, sleepStatus, currentStreak, longestStreak, STATUS_LABEL, foodOn, weightOn } from '../store.js';
+import { S, avg, rating, sleepStatus, currentStreak, longestStreak, STATUS_LABEL, foodOn, weightOn, smokeOn } from '../store.js';
 import { isSetUp, targets, totals, progress, kcalStatus, fmtKcal } from '../nutrition.js';
+import { isSetUp as smokeSetUp, tabOn as smokeTabOn, phase as smokePhase, stats as smokeStats, dayStatus, fmtSpan, fmtMoney, historyStart, unitWord, parts } from '../smoke.js';
+import { slipText } from './smoke.js';
 import { icon, face, CATS, LABELS, segHTML, setSeg, hydratePhotos } from '../ui.js';
 import { lineChart, barChart, weightChart } from '../charts.js';
 import {
   $,
   esc,
   today,
+  iso,
   fromISO,
   addDays,
   datesBack,
@@ -44,7 +47,8 @@ function body() {
   const n = Number(range);
   const dates = datesBack(n);
   const prev = datesBack(n, addDays(today(), -n));
-  return [tilesHTML(dates), chartHTML(), kcalHTML(dates), weightHTML(), avgsHTML(dates, prev), insightsHTML(), pixelsHTML(), photosHTML(dates), totalsHTML()].join('');
+  const food = S.settings.tabs?.food !== false;
+  return [tilesHTML(dates), chartHTML(), food ? kcalHTML(dates) : '', food ? weightHTML() : '', smokeHTML(dates), avgsHTML(dates, prev), insightsHTML(), pixelsHTML(), photosHTML(dates), totalsHTML()].join('');
 }
 
 /* ---------- Kacheln ---------- */
@@ -65,7 +69,8 @@ function tilesHTML(dates) {
     <div class="stat"><span class="k">${icon('flame')} Serie</span><span class="v"><span data-count="${streak}">${streak}</span><small>${streak === 1 ? 'Tag' : 'Tage'}</small></span><span class="s">Rekord: ${best} ${best === 1 ? 'Tag' : 'Tage'}</span></div>
     <div class="stat"><span class="k">${icon('moon')} Ø Schlaf</span><span class="v">${sleepAvg ? `${fmtHM(sleepAvg)}<small>h</small>` : '–'}</span><span class="s">${sleepAvg ? STATUS_LABEL[sleepStatus(sleepAvg)] : 'Noch keine Nächte'}</span></div>
     <div class="stat"><span class="k">${icon('dumbbell')} Bewegung</span><span class="v">${sport}</span><span class="s">${active} ${active === 1 ? 'aktiver Tag' : 'aktive Tage'}</span></div>
-    ${foodTiles(dates)}
+    ${S.settings.tabs?.food !== false ? foodTiles(dates) : ''}
+    ${smokeTiles()}
   </div>`;
 }
 function foodTiles(dates) {
@@ -78,6 +83,56 @@ function foodTiles(dates) {
   const diff = wNow && wThen ? wNow.kg - wThen.kg : null;
   return `<div class="stat"><span class="k">${icon('apple')} Ø Kalorien</span><span class="v">${avgKcal ? `<span data-count="${Math.round(avgKcal)}">${fmtKcal(avgKcal)}</span>` : '–'}</span><span class="s">${hit != null && days.length ? `Ziel an ${hit} von ${days.length} Tagen` : `${days.length} Tage erfasst`}</span></div>
     <div class="stat"><span class="k">${icon('scale')} Gewicht</span><span class="v">${wNow ? `${fmtNum(wNow.kg, 1)}<small>kg</small>` : '–'}</span><span class="s">${diff != null && Math.abs(diff) >= 0.05 ? `${diff > 0 ? '+' : '−'}${fmtNum(Math.abs(diff), 1)} kg im Zeitraum` : wNow && wThen && wThen.date !== wNow.date ? 'kaum Veränderung' : wNow ? 'Erste Messung' : 'Noch nicht gewogen'}</span></div>`;
+}
+
+const smokeOnStats = () => smokeTabOn() && smokeSetUp() && smokePhase() !== 'countdown';
+function smokeTiles() {
+  if (!smokeOnStats()) return '';
+  const st = smokeStats();
+  const free = smokePhase() === 'free';
+  const p = parts(st.ms);
+  const since = p.d >= 1 ? `${p.d}<small>${p.d === 1 ? 'Tag' : 'Tage'}</small>` : fmtSpan(st.ms, true);
+  return `<div class="stat"><span class="k">${icon('nosmoke')} ${free ? 'Rauchfrei' : 'Im Plan'}</span><span class="v">${free ? since : `${fmtNum(st.avoided, 0)}<small>weniger</small>`}</span><span class="s">${free ? slipText(st) : 'als früher geraucht'}</span></div>
+    <div class="stat"><span class="k">${icon('coin')} Gespart</span><span class="v">${fmtMoney(st.saved)}</span><span class="s">${st.resisted}× Lust besiegt</span></div>`;
+}
+
+/* ---------- Rauchfrei ---------- */
+function smokeHTML(dates) {
+  if (!smokeOnStats()) return '';
+  const t = today();
+  const cnt = (d, f) => smokeOn(d).filter(f).reduce((s, e) => s + (e.type === 'craving' ? 1 : e.count || 1), 0);
+  const won = (d) => cnt(d, (e) => e.type === 'craving' && e.resisted !== false);
+  const smoked = (d) => cnt(d, (e) => e.type === 'slip' || e.type === 'cig');
+  let items;
+  if (range === '365') {
+    items = [];
+    for (let w = 51; w >= 0; w--) {
+      const ds = datesBack(7, addDays(t, -w * 7));
+      const sts = ds.map(dayStatus).filter(Boolean);
+      const v = ds.reduce((s, d) => s + won(d) + smoked(d), 0);
+      const bad = sts.some((x) => x.st === 'bad');
+      const m = fromISO(addDays(t, -w * 7)).getMonth();
+      items.push({ value: sts.length ? v : null, label: w % 9 === 0 ? MONTHS_SHORT[m] : '', cls: bad ? 'st-bad' : 'st-good' });
+    }
+  } else {
+    const n = dates.length;
+    items = dates.map((d, i) => {
+      const ds = dayStatus(d);
+      const label = n <= 7 ? WD[fromISO(d).getDay()] : (n - 1 - i) % 7 === 0 ? `${fromISO(d).getDate()}.${fromISO(d).getMonth() + 1}.` : '';
+      return { value: ds ? won(d) + smoked(d) : null, label, hl: d === t, cls: `st-${ds?.st || 'good'}`, title: ds ? `${fmtDayMonth(d)}: ${won(d)}× Lust besiegt${smoked(d) ? `, ${smoked(d)} geraucht` : ''}` : '' };
+    });
+  }
+  if (!items.some((i) => i.value != null)) return '';
+  const sts = dates.map(dayStatus).filter(Boolean);
+  const freeDays = sts.filter((x) => x.kind === 'free' && !x.smoked).length;
+  const planDays = sts.filter((x) => x.kind === 'plan');
+  const max = Math.max(4, ...items.map((i) => i.value || 0));
+  return `<section class="card">
+    <div class="card-h"><h2 class="card-t">${icon('nosmoke')} Rauchfrei</h2><span class="faint small">Lust &amp; Zigaretten</span></div>
+    ${barChart({ items, max, height: 140 })}
+    <div class="sm-legend"><span><i class="sdot st-good"></i>${planDays.length ? 'im Plan / rauchfrei' : 'rauchfrei'}</span><span><i class="sdot st-bad"></i>geraucht</span></div>
+    <div class="debt"><span>${planDays.length && !freeDays ? 'Tage im Plan' : 'Rauchfreie Tage'}</span><b>${planDays.length && !freeDays ? planDays.filter((x) => x.st === 'good').length : freeDays} <span class="faint" style="font-weight:500">von ${sts.length}</span></b></div>
+  </section>`;
 }
 
 /* ---------- Kalorien & Gewicht ---------- */
@@ -226,6 +281,10 @@ function insightsHTML() {
   add('water', days.filter((d) => (J(d).water || 0) >= goal), days.filter((d) => J(d).water != null && J(d).water < goal * 0.6), 'energie');
   add('social', days.filter((d) => rating(d, 'sozial') >= 4), days.filter((d) => rating(d, 'sozial') && rating(d, 'sozial') <= 2), 'tag');
   add('food', days.filter((d) => rating(d, 'ernaehrung') >= 4), days.filter((d) => rating(d, 'ernaehrung') && rating(d, 'ernaehrung') <= 2), 'energie');
+  if (smokeOnStats()) {
+    const s0 = iso(new Date(historyStart()));
+    add('smoke', days.filter((d) => d >= s0), days.filter((d) => d < s0), 'tag');
+  }
   if (isSetUp()) {
     const fed = days.filter((d) => foodOn(d).length);
     add('kcal', fed.filter((d) => progress(d) >= 1), fed.filter((d) => progress(d) < 0.85), 'energie');
@@ -250,6 +309,7 @@ function insightsHTML() {
     social: (x) => [`Nach <b>guter Zeit mit anderen</b> bewertest du deinen Tag mit <b>${f(x.A)}</b>, an einsamen Tagen mit <b>${f(x.B)}</b>.`, 'Gute Zeit', 'Eher allein'],
     food: (x) => [`Isst du <b>gesund</b>, liegt deine Energie bei <b>${f(x.A)}</b>, sonst bei <b>${f(x.B)}</b>.`, 'Gesund', 'Ungesund'],
     habit: (x) => [`An Tagen mit <b>${esc(x.name)}</b> bewertest du deinen Tag mit <b>${f(x.A)}</b>, ohne mit <b>${f(x.B)}</b>.`, 'Mit', 'Ohne'],
+    smoke: (x) => [`Seit du <b>mit dem Rauchen aufhörst</b>, bewertest du deinen Tag mit <b>${f(x.A)}</b>, in den Wochen davor mit <b>${f(x.B)}</b>.`, 'Seitdem', 'Davor'],
     kcal: (x) => [`Wenn du dein <b>Kalorienziel</b> schaffst, liegt deine Energie bei <b>${f(x.A)}</b>, an Tagen mit zu wenig Essen bei <b>${f(x.B)}</b>.`, 'Ziel geschafft', 'Zu wenig'],
   };
   const top = list
@@ -273,6 +333,9 @@ function insightsHTML() {
 function scaleHTML() {
   if (pxMode === 'mood') {
     return `<span class="px-scale">Furchtbar ${[1, 2, 3, 4, 5].map((l) => `<i class="lv${l}"></i>`).join('')} Super</span>`;
+  }
+  if (pxMode === 'smoke') {
+    return `<span class="px-scale"><i class="st-good"></i>rauchfrei / im Plan <i class="st-bad" style="margin-left:8px"></i>geraucht</span>`;
   }
   if (pxMode === 'kcal') {
     return `<span class="px-scale"><i class="st-bad"></i>zu wenig <i class="st-ok" style="margin-left:8px"></i>knapp <i class="st-good" style="margin-left:8px"></i>Ziel geschafft</span>`;
@@ -302,6 +365,9 @@ function pixelsHTML() {
       } else if (pxMode === 'kcal') {
         const kp = progress(ds);
         if (kp != null) cls = `has st-${kcalStatus(kp)}`;
+      } else if (pxMode === 'smoke') {
+        const st = dayStatus(ds);
+        if (st) cls = `has st-${st.st}`;
       } else {
         const h = S.sleep.get(ds)?.hours;
         if (h) cls = `has st-${sleepStatus(h)}`;
@@ -314,7 +380,8 @@ function pixelsHTML() {
     <div class="card-h"><h2 class="card-t">Dein Jahr ${y}</h2>${segHTML('st-px', [
       ['mood', 'Stimmung'],
       ['sleep', 'Schlaf'],
-      ...(isSetUp() ? [['kcal', 'Essen']] : []),
+      ...(isSetUp() && S.settings.tabs?.food !== false ? [['kcal', 'Essen']] : []),
+      ...(smokeOnStats() ? [['smoke', 'Rauchfrei']] : []),
     ], pxMode, 'sm')}</div>
     ${grid}
     <div class="px-read" id="px-read">${scaleHTML()}</div>
@@ -395,6 +462,11 @@ act('px', (el) => {
   if (pxMode === 'mood') {
     const v = rating(d, 'tag');
     text = v ? `${face(v)}<span>${fmtLong(d)} · ${LABELS.tag[v - 1]}</span>` : `<span>${fmtLong(d)} · kein Eintrag</span>`;
+  } else if (pxMode === 'smoke') {
+    const st = dayStatus(d);
+    text = st
+      ? `<i class="sdot st-${st.st}"></i><span>${fmtLong(d)} · ${st.kind === 'plan' ? `${st.smoked} von ${st.limit} ${unitWord(st.limit)}` : st.smoked ? `${st.smoked} ${unitWord(st.smoked)} geraucht` : 'rauchfrei'}</span>`
+      : `<span>${fmtLong(d)} · noch nicht im Plan</span>`;
   } else if (pxMode === 'kcal') {
     const kp = progress(d);
     text = kp != null ? `<i class="sdot st-${kcalStatus(kp)}"></i><span>${fmtLong(d)} · ${fmtKcal(totals(d).kcal)} von ${fmtKcal(targets(d).kcal)} kcal</span>` : `<span>${fmtLong(d)} · nichts eingetragen</span>`;

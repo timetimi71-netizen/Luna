@@ -26,6 +26,8 @@ import { act } from '../app.js';
 import { agendaItem } from './calendar.js';
 import { ringSVG } from './food.js';
 import { isSetUp, targets, totals, fmtKcal, nut } from '../nutrition.js';
+import { todayCard as smokeTodayCard, startTicker } from './smoke.js';
+import { tabOn as smokeTabOn, isSetUp as smokeSetUp } from '../smoke.js';
 
 function greeting(h) {
   if (h < 5) return 'Gute Nacht';
@@ -59,6 +61,7 @@ export function render() {
   ${hero()}
   <div class="row2">${streakTile()}${sleepTile()}</div>
   ${foodCard()}
+  ${smokeCard()}
   ${eventsCard()}
   ${waterCard()}
   ${weekCard()}
@@ -120,7 +123,25 @@ function sleepTile() {
     <div class="tile-label"><i class="sdot"></i>${STATUS_LABEL[st]}</div></button>`;
 }
 
+export function mount(root) {
+  if (root.querySelector('[data-live]')) startTicker();
+}
+
+function smokeCard() {
+  if (!smokeTabOn()) return '';
+  if (smokeSetUp()) return smokeTodayCard();
+  if (S.settings.smokeHintDismissed || IS_PREVIEW) return '';
+  return tip(
+    'smoke',
+    icon('nosmoke'),
+    'Mit dem Rauchen aufhören?',
+    'Luna zählt jede rauchfreie Stunde, rechnet dein gespartes Geld aus und hilft dir, wenn die Lust kommt.',
+    '<button type="button" class="btn btn-soft btn-sm" data-act="go" data-to="smoke">Plan erstellen</button>',
+  );
+}
+
 function foodCard() {
+  if (S.settings.tabs?.food === false) return '';
   const d = journalDate();
   if (!isSetUp()) {
     return `<button type="button" class="card tip food-cta" data-act="go" data-to="food"><div class="tip-ic">${icon('apple')}</div><div>
@@ -273,7 +294,7 @@ act('moon', () => {
   haptic();
 });
 act('tip-x', (el) => {
-  const key = { install: 'installHintDismissed', reminder: 'reminderHintDismissed', reinstall: 'reinstallHintDismissed' }[el.dataset.tip];
+  const key = { install: 'installHintDismissed', reminder: 'reminderHintDismissed', reinstall: 'reinstallHintDismissed', smoke: 'smokeHintDismissed' }[el.dataset.tip];
   if (key) saveSettings({ [key]: true });
   const card = el.closest('.tip');
   card.style.transition = 'opacity .25s, transform .25s';

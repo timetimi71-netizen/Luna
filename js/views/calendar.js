@@ -1,5 +1,5 @@
 // Luna · Kalender: Monatsansicht, Tagesliste, Termin-Formular und Übergabe an den iPhone-Kalender
-import { S, eventsOn, saveEvent, deleteEvent, sleepStatus } from '../store.js';
+import { S, eventsOn, saveEvent, deleteEvent, sleepStatus, smokeOn } from '../store.js';
 import { icon, face, openSheet, closeSheet, confirmDialog, evColor, EV_COLORS, switchHTML } from '../ui.js';
 import {
   $,
@@ -25,6 +25,7 @@ import {
 } from '../util.js';
 import { act, app } from '../app.js';
 import { progress, kcalStatus, totals, fmtKcal, KCAL_LABEL } from '../nutrition.js';
+import { dayStatus, tabOn as smokeTabOn, unitWord } from '../smoke.js';
 import { REPEATS, ALARMS_TIMED, ALARMS_ALLDAY, eventToICS, openInCalendar, shareICS, icsName, alarmPhrase } from '../ics.js';
 
 let month = firstOfMonth(today());
@@ -73,7 +74,7 @@ function gridHTML() {
     const evs = eventsOn(d);
     const mood = S.journal.get(d)?.ratings?.tag;
     const sl = S.sleep.get(d);
-    const kp = progress(d);
+    const kp = S.settings.tabs?.food !== false ? progress(d) : null;
     html += `<button type="button" class="day ${other ? 'other' : ''} ${d === t ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-act="cal-day" data-date="${d}" aria-label="${fmtLong(d)}${evs.length ? `, ${evs.length} ${evs.length > 1 ? 'Termine' : 'Termin'}` : ''}">
       <span class="n">${kp != null ? `<i class="kr st-${kcalStatus(kp)}" style="--p:${Math.min(100, Math.round(kp * 100))}"></i>` : ''}${fromISO(d).getDate()}${sl?.hours ? `<i class="sl st-${sleepStatus(sl.hours)}"></i>` : ''}</span>
       <span class="dots">${evs
@@ -81,7 +82,7 @@ function gridHTML() {
         .map((ev) => `<i style="--c:${evColor(ev)}"></i>`)
         .join('')}</span>${mood ? `<span class="mood lv${mood}"></span>` : ''}</button>`;
   }
-  html += `</div><div class="legend"><span><i class="lg-dot"></i>Termin</span><span><i class="lg-bar"></i>Stimmung</span><span><i class="lg-sl"></i>Schlaf</span><span><i class="lg-kr"></i>Kalorien</span></div>`;
+  html += `</div><div class="legend"><span><i class="lg-dot"></i>Termin</span><span><i class="lg-bar"></i>Stimmung</span><span><i class="lg-sl"></i>Schlaf</span>${S.settings.tabs?.food !== false ? '<span><i class="lg-kr"></i>Kalorien</span>' : ''}</div>`;
   return html;
 }
 
@@ -115,10 +116,17 @@ function dayPanel() {
   if (sl?.hours) {
     extra.push(`<button type="button" class="pill st-${sleepStatus(sl.hours)}" data-act="sleep-edit" data-date="${sel}"><i class="sdot"></i>${fmtDur(sl.hours)} geschlafen</button>`);
   }
-  const kp = progress(sel);
+  const kp = S.settings.tabs?.food !== false ? progress(sel) : null;
   if (kp != null) {
     const st = kcalStatus(kp);
     extra.push(`<button type="button" class="pill st-${st}" data-act="go" data-to="food" data-date="${sel}" aria-label="${KCAL_LABEL[st]}"><i class="sdot"></i>${fmtKcal(totals(sel).kcal)} kcal gegessen</button>`);
+  }
+  const ds = smokeTabOn() ? dayStatus(sel) : null;
+  if (ds) {
+    const won = smokeOn(sel).filter((e) => e.type === 'craving' && e.resisted !== false).length;
+    const label =
+      ds.kind === 'plan' ? `${ds.smoked} von ${ds.limit} ${unitWord(ds.limit)}` : ds.smoked ? `${ds.smoked} ${unitWord(ds.smoked)} geraucht` : sel === today() ? 'Bisher rauchfrei' : 'Rauchfrei';
+    extra.push(`<button type="button" class="pill st-${ds.st}" data-act="go" data-to="smoke"><i class="sdot"></i>${label}${won ? ` · ${won}× Lust besiegt` : ''}</button>`);
   }
   return `<div class="dp-head"><h2 class="dp-title">${title}</h2><div class="dp-actions">${
     sel !== today() || month !== firstOfMonth(today()) ? '<button type="button" class="today-pill" data-act="cal-today">Heute</button>' : ''

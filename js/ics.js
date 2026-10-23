@@ -89,18 +89,8 @@ function trigger(ev) {
   return `-PT${m}M`;
 }
 
-export function eventToICS(ev) {
-  const L = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Luna//Tagebuch//DE',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${ev.id}@luna-tagebuch`,
-    `DTSTAMP:${stamp()}`,
-    `SUMMARY:${txt(ev.title)}`,
-  ];
+function vevent(ev) {
+  const L = ['BEGIN:VEVENT', `UID:${ev.id}@luna-tagebuch`, `DTSTAMP:${stamp()}`, `SUMMARY:${txt(ev.title)}`];
   if (ev.allDay) {
     L.push(`DTSTART;VALUE=DATE:${compact(ev.date)}`, `DTEND;VALUE=DATE:${compact(addDays(ev.date, 1))}`);
   } else {
@@ -114,9 +104,18 @@ export function eventToICS(ev) {
   if (RRULE[ev.repeat]) L.push(`RRULE:${RRULE[ev.repeat]}`);
   const trig = trigger(ev);
   if (trig) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${txt(ev.title)}`, `TRIGGER:${trig}`, 'END:VALARM');
-  L.push('END:VEVENT', 'END:VCALENDAR');
+  L.push('END:VEVENT');
+  return L;
+}
+
+// Mehrere Termine in einer Datei (z. B. Rauchfrei-Meilensteine)
+export function eventsToICS(list) {
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Luna//Tagebuch//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  list.forEach((ev) => L.push(...vevent(ev)));
+  L.push('END:VCALENDAR');
   return `${L.map(fold).join('\r\n')}\r\n`;
 }
+export const eventToICS = (ev) => eventsToICS([ev]);
 
 export function reminderICS(time) {
   return eventToICS({

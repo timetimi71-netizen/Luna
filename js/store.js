@@ -1,5 +1,5 @@
 // Luna · Datenhaltung. Alles liegt in IndexedDB auf dem Gerät und wird beim Start in den Arbeitsspeicher geladen.
-import { addDays, today, toMin, uid, fromISO, diffDays, blobToDataURL, dataURLToBlob } from './util.js';
+import { addDays, today, toMin, uid, iso, fromISO, diffDays, blobToDataURL, dataURLToBlob } from './util.js';
 
 export const S = {
   journal: new Map(), // Datum -> Eintrag
@@ -10,6 +10,7 @@ export const S = {
   weights: new Map(), // Datum -> { date, kg }
   foodlib: new Map(), // id -> Favorit oder eigenes Lebensmittel
   foodPics: new Set(), // ids von Einträgen mit Foto
+  smoke: new Map(), // id -> Lust, Ausrutscher oder Zigarette (Reduzieren)
   settings: null,
   memoryOnly: false,
 };
@@ -23,6 +24,7 @@ export const DEFAULTS = {
   cats: { schlaf: true, ernaehrung: true, sport: true, energie: true, stress: true, sozial: true },
   questions: { gratitude: true, good: true, better: true },
   modules: { photo: true, sport: true, water: true, habits: true },
+  tabs: { food: true, smoke: true },
   waterGoal: 8,
   glassMl: 250,
   habits: [
@@ -40,6 +42,7 @@ export const DEFAULTS = {
   installHintDismissed: false,
   reminderHintDismissed: false,
   reinstallHintDismissed: false,
+  smokeHintDismissed: false,
   lastBackup: null,
   demoLoaded: false,
   nutrition: {
@@ -58,6 +61,27 @@ export const DEFAULTS = {
     geminiKey: '',
     geminiModel: '',
   },
+  smoke: {
+    setup: false,
+    kind: 'zigaretten', // zigaretten | tabak | vape
+    perDay: 10,
+    packPrice: 9.5,
+    perPack: 20,
+    weekCost: 20,
+    currency: 'CHF',
+    mode: 'stop', // stop | reduce
+    quitAt: null, // Zeitpunkt des Rauchstopps (ms)
+    planStart: null, // Beginn des Reduzierens (ms)
+    planEnd: null, // Ende eines früheren Plans (ms), solange der Plan läuft leer
+    planTarget: null, // geplanter Rauchstopp eines früheren Plans (für die Tageslimits)
+    reasons: [],
+    reasonText: '',
+    goalName: '',
+    goalPrice: null,
+    attempts: [], // frühere Versuche [{ from, to }]
+    seen: [], // schon gefeierte Erfolge
+    prep: [], // erledigte Vorbereitungen vor dem Rauchstopp
+  },
 };
 
 export const hooks = { onError: null };
@@ -74,7 +98,7 @@ const wrap = (r) =>
 
 function openDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('luna', 2);
+    const r = indexedDB.open('luna', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
       const stores = [
@@ -87,6 +111,7 @@ function openDB() {
         ['weights', 'date'],
         ['foodlib', 'id'],
         ['foodpics', 'id'],
+        ['smokelog', 'id'],
       ];
       for (const [name, keyPath] of stores) {
         if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, { keyPath });
@@ -159,7 +184,7 @@ export async function loadAll() {
     S.memoryOnly = true;
   }
   try {
-    const [j, s, ev, meta, pk, fo, we, fl, fp] = await Promise.all([
+    const [j, s, ev, meta, pk, fo, we, fl, fp, sm] = await Promise.all([
       getAll('journal'),
       getAll('sleep'),
       getAll('events'),
@@ -169,6 +194,7 @@ export async function loadAll() {
       getAll('weights'),
       getAll('foodlib'),
       getAllKeys('foodpics'),
+      getAll('smokelog'),
     ]);
     j.forEach((e) => S.journal.set(e.date, e));
     s.forEach((e) => S.sleep.set(e.date, e));
@@ -178,7 +204,9 @@ export async function loadAll() {
     we.forEach((e) => S.weights.set(e.date, e));
     fl.forEach((e) => S.foodlib.set(e.id, e));
     fp.forEach((k) => S.foodPics.add(k));
+    sm.forEach((e) => S.smoke.set(e.id, e));
     reindexFood();
+    reindexSmoke();
     S.settings = mergeSettings(meta.find((m) => m.key === 'settings')?.value);
   } catch (e) {
     console.error(e);
@@ -196,9 +224,12 @@ export function mergeSettings(st = {}) {
     modules: { ...DEFAULTS.modules, ...st.modules },
     habits: Array.isArray(st.habits) ? st.habits : DEFAULTS.habits.map((h) => ({ ...h })),
     nutrition: { ...DEFAULTS.nutrition, ...st.nutrition },
+    tabs: { ...DEFAULTS.tabs, ...st.tabs },
+    smoke: { ...DEFAULTS.smoke, ...st.smoke },
   };
 }
 export const saveNutrition = (patch) => saveSettings({ nutrition: { ...S.settings.nutrition, ...patch } });
+export const saveSmokeSettings = (patch) => saveSettings({ smoke: { ...S.settings.smoke, ...patch } });
 export function saveSettings(patch) {
   S.settings = { ...S.settings, ...patch };
   return put('meta', { key: 'settings', value: S.settings });
@@ -478,6 +509,32 @@ export function deleteWeight(date) {
   S.weights.delete(date);
   return remove('weights', date);
 }
+
+/* ---------- Rauchfrei ----------
+   Ein Protokoll mit Zeitpunkt: Lust (craving), Ausrutscher (slip) oder Zigarette im Reduzier-Plan (cig). */
+export const smokeByDate = new Map();
+export function reindexSmoke() {
+  smokeByDate.clear();
+  for (const e of S.smoke.values()) {
+    if (!smokeByDate.has(e.date)) smokeByDate.set(e.date, []);
+    smokeByDate.get(e.date).push(e);
+  }
+  for (const list of smokeByDate.values()) list.sort((a, b) => a.at - b.at);
+}
+export const smokeOn = (date) => smokeByDate.get(date) || [];
+export function saveSmoke(entry) {
+  const at = entry.at || Date.now();
+  const e = { createdAt: Date.now(), ...entry, at, date: iso(new Date(at)), id: entry.id || uid(), updatedAt: Date.now() };
+  S.smoke.set(e.id, e);
+  reindexSmoke();
+  put('smokelog', e);
+  return e;
+}
+export function deleteSmoke(id) {
+  S.smoke.delete(id);
+  reindexSmoke();
+  return remove('smokelog', id);
+}
 // Letztes Gewicht an oder vor einem Datum
 export function weightOn(date) {
   let best = null;
@@ -522,13 +579,15 @@ export async function wipeAll() {
   S.weights.clear();
   S.foodlib.clear();
   S.foodPics.clear();
+  S.smoke.clear();
   reindexFood();
+  reindexSmoke();
   memPhotos.clear();
   urlCache.forEach((u) => URL.revokeObjectURL(u));
   urlCache.clear();
   foodURLs.forEach((u) => URL.revokeObjectURL(u));
   foodURLs.clear();
-  await Promise.all(['journal', 'sleep', 'events', 'photos', 'meta', 'food', 'weights', 'foodlib', 'foodpics'].map(clear));
+  await Promise.all(['journal', 'sleep', 'events', 'photos', 'meta', 'food', 'weights', 'foodlib', 'foodpics', 'smokelog'].map(clear));
   S.settings = mergeSettings();
 }
 
@@ -540,6 +599,7 @@ export async function removeDemo() {
     ['food', S.food],
     ['weights', S.weights],
     ['foodlib', S.foodlib],
+    ['smokelog', S.smoke],
   ]) {
     for (const [k, v] of [...map]) {
       if (v.demo) {
@@ -549,13 +609,15 @@ export async function removeDemo() {
     }
   }
   reindexFood();
+  reindexSmoke();
   const n = S.settings.nutrition;
   // Ziel kam nur aus den Beispieldaten? Dann zurück auf Anfang (Gemini-Schlüssel bleibt).
   const nutrition = n.demo ? { ...DEFAULTS.nutrition, geminiKey: n.geminiKey, geminiModel: n.geminiModel } : n;
-  await saveSettings({ demoLoaded: false, nutrition });
+  const smoke = S.settings.smoke.demo ? { ...DEFAULTS.smoke } : S.settings.smoke;
+  await saveSettings({ demoLoaded: false, nutrition, smoke });
 }
 export const hasDemo = () =>
-  [S.journal, S.events, S.sleep, S.food, S.weights].some((m) => [...m.values()].some((e) => e.demo));
+  [S.journal, S.events, S.sleep, S.food, S.weights, S.smoke].some((m) => [...m.values()].some((e) => e.demo));
 
 /* ---------- Backup ---------- */
 export async function buildBackup() {
@@ -574,7 +636,7 @@ export async function buildBackup() {
   settings.nutrition = { ...settings.nutrition, geminiKey: '', geminiModel: '' };
   return {
     app: 'luna',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     settings,
     journal: [...S.journal.values()],
@@ -585,6 +647,7 @@ export async function buildBackup() {
     weights: [...S.weights.values()],
     foodlib: [...S.foodlib.values()],
     foodPics,
+    smokelog: [...S.smoke.values()],
   };
 }
 
@@ -600,22 +663,28 @@ export async function restoreBackup(data) {
   const food = (data.food || []).filter((e) => e && isId(e.id) && isDate(e.date) && okTime(e.time) && Number.isFinite(e.kcal));
   const weights = (data.weights || []).filter((e) => e && isDate(e.date) && Number.isFinite(e.kg));
   const foodlib = (data.foodlib || []).filter((e) => e && isId(e.id) && e.name);
+  const smokelog = (data.smokelog || []).filter(
+    (e) => e && isId(e.id) && Number.isFinite(e.at) && isDate(e.date) && ['craving', 'slip', 'cig'].includes(e.type),
+  );
   journal.forEach((e) => S.journal.set(e.date, e));
   sleep.forEach((e) => S.sleep.set(e.date, e));
   events.forEach((e) => S.events.set(e.id, e));
   food.forEach((e) => S.food.set(e.id, e));
   weights.forEach((e) => S.weights.set(e.date, e));
   foodlib.forEach((e) => S.foodlib.set(e.id, e));
+  smokelog.forEach((e) => S.smoke.set(e.id, e));
   reindexFood();
+  reindexSmoke();
   await putMany('journal', journal);
   await putMany('sleep', sleep);
   await putMany('events', events);
   await putMany('food', food);
   await putMany('weights', weights);
   await putMany('foodlib', foodlib);
+  await putMany('smokelog', smokelog);
   let photos = 0;
   for (const p of data.photos || []) {
-    if (!p?.date || !p.data) continue;
+    if (!isDate(p?.date) || !p.data) continue;
     await savePhoto(p.date, dataURLToBlob(p.data), { w: p.w, h: p.h });
     photos++;
   }
@@ -630,5 +699,5 @@ export async function restoreBackup(data) {
     merged.nutrition = { ...merged.nutrition, geminiKey: key, geminiModel: model };
     await saveSettings(merged);
   }
-  return { journal: journal.length, sleep: sleep.length, events: events.length, photos, food: food.length };
+  return { journal: journal.length, sleep: sleep.length, events: events.length, photos, food: food.length, smoke: smokelog.length };
 }

@@ -35,8 +35,10 @@ import { stopDictation } from './speech.js';
 import { loadDemo } from './demo.js';
 import { isSetUp, targets, fmtKcal } from './nutrition.js';
 import { openSetup, openKeySheet } from './views/food.js';
+import { openSetup as openSmokeSetup } from './views/smoke.js';
+import { isSetUp as smokeSetUp, phase as smokePhase, fmtMoney, costPerDay } from './smoke.js';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 const ACCENTS = [
   ['mond', '#8fa3ff', 'Mond'],
@@ -150,6 +152,33 @@ function settingsHTML() {
         <div class="stepper"><button type="button" data-act="set-water" data-d="-1" aria-label="Ein Glas weniger">${icon('minus')}</button><output id="set-water-out">${st.waterGoal}</output><button type="button" data-act="set-water" data-d="1" aria-label="Ein Glas mehr">${icon('plus')}</button></div></div>
     </div>
 
+    <div class="group-label" id="set-tabs">Tableiste</div>
+    <div class="group">
+      ${[
+        ['food', 'apple', 'Essen'],
+        ['smoke', 'nosmoke', 'Rauchfrei'],
+      ]
+        .map(
+          ([k, ic, l]) =>
+            `<label class="li" for="set-tab-${k}"><span class="li-ic">${icon(ic)}</span><span class="li-title li-main">${l}</span>${sw(`set-tab-${k}`, st.tabs?.[k] !== false, `data-change="set-tab" data-key="${k}"`)}</label>`,
+        )
+        .join('')}
+    </div>
+    <div class="group-note">Ausgeblendete Bereiche behalten ihre Daten und lassen sich jederzeit wieder einschalten.</div>
+
+    ${
+      st.tabs?.smoke !== false
+        ? `<div class="group-label" id="set-smoke">Rauchfrei</div>
+    <div class="group">
+      <button type="button" class="li" data-act="set-smoke"><span class="li-ic">${icon('nosmoke')}</span><span class="li-main"><span class="li-title">Plan &amp; Kosten</span><span class="li-sub">${
+        smokeSetUp()
+          ? `${{ free: 'Rauchfrei', countdown: 'Rauchstopp geplant', reduce: 'Reduzieren läuft' }[smokePhase()] || ''} · ${fmtMoney(costPerDay())} pro Tag`
+          : 'Noch nicht eingerichtet'
+      }</span></span><span class="li-end">${icon('chevR')}</span></button>
+    </div>`
+        : ''
+    }
+
     <div class="group-label" id="set-food">Ernährung</div>
     <div class="group">
       <button type="button" class="li" data-act="set-food-goal"><span class="li-ic">${icon('target')}</span><span class="li-main"><span class="li-title">Zunehm-Ziel</span><span class="li-sub">${
@@ -236,6 +265,13 @@ function rerenderSettings() {
 
 act('settings', (el) => openSettings(el.dataset.section));
 act('set-food-goal', () => openSetup({ onDone: rerenderSettings }));
+act('set-smoke', () => openSmokeSetup({ onDone: rerenderSettings }));
+onChange('set-tab', (el) => {
+  saveSettings({ tabs: { ...S.settings.tabs, [el.dataset.key]: el.checked } });
+  app.rebuildTabs?.();
+  haptic();
+  setTimeout(rerenderSettings, 250);
+});
 act('set-food-key', () => openKeySheet(null, rerenderSettings));
 const saveName = debounce((v) => saveSettings({ name: v }), 300);
 onInput('set-name', (el) => saveName(el.value.trim()));
@@ -398,6 +434,7 @@ onChange('backup-import', async (el) => {
   try {
     const r = await restoreBackup(data);
     applySettings();
+    app.rebuildTabs?.();
     toast(`Wiederhergestellt: ${r.journal} Einträge, ${r.food} Mahlzeiten, ${r.photos} Fotos`, { icon: icon('check') });
     rerenderSettings();
   } catch (e) {
@@ -419,7 +456,7 @@ act('demo-remove', async () => {
 act('wipe', async () => {
   const ok = await confirmDialog({
     title: 'Alle Daten löschen?',
-    text: 'Journal, Schlaf, Termine, Fotos und Einstellungen werden von diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.',
+    text: 'Journal, Schlaf, Termine, Essen, Rauchfrei, Fotos und Einstellungen werden von diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.',
     ok: 'Alles löschen',
     danger: true,
   });

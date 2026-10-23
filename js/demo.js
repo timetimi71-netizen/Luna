@@ -1,6 +1,7 @@
 // Luna · Beispieldaten zum Ausprobieren (alle mit demo: true markiert, lassen sich wieder entfernen)
-import { S, putMany, saveSettings, sleepHours, reindexFood } from './store.js';
-import { today, addDays, fromISO, fromMin, clamp } from './util.js';
+import { S, putMany, saveSettings, saveSmokeSettings, sleepHours, reindexFood, reindexSmoke } from './store.js';
+import { today, iso, addDays, fromISO, fromMin, clamp } from './util.js';
+import { badges } from './smoke.js';
 
 function rng(seed) {
   return () => {
@@ -192,6 +193,44 @@ export async function loadDemo() {
   }
   const fav = { id: 'demo-fav-shake', type: 'fav', ...SHAKE, uses: 6, demo: true, createdAt: now, updatedAt: now };
 
+  // Rauchfrei: Rauchstopp vor 12 Tagen um 21:30, die Lust wird mit der Zeit seltener, ein Ausrutscher auf einer Party
+  const smokeSet = !S.settings.smoke.setup;
+  const quit = fromISO(addDays(t, -12));
+  quit.setHours(21, 30, 0, 0);
+  const smoke = [];
+  if (smokeSet) {
+    const TRIG = [
+      [8.3, 'kaffee'],
+      [10.2, 'pause'],
+      [13.1, 'essen'],
+      [16.4, 'stress'],
+      [19.6, 'essen'],
+      [22.2, 'langeweile'],
+      [15.2, 'freunde'],
+    ];
+    for (let i = 12; i >= 0; i--) {
+      const d = addDays(t, -i);
+      const day = 12 - i;
+      const n = i === 12 ? 2 : Math.max(1, Math.round(7.5 - day * 0.55 + gauss() * 0.9));
+      const used = new Set();
+      for (let k = 0; k < n; k++) {
+        let [h, trig] = pick(TRIG);
+        if (used.has(trig) && r() < 0.6) [h, trig] = pick(TRIG);
+        used.add(trig);
+        if (i === 12) h = 22 + k * 0.6;
+        const at = fromISO(d);
+        at.setHours(0, Math.round((h + r() * 0.8) * 60), 0, 0);
+        if (at.getTime() > Date.now() || at.getTime() < quit.getTime()) continue;
+        smoke.push({ type: 'craving', at: at.getTime(), resisted: true, strength: day < 4 ? 3 : day < 8 ? 2 : 1, trigger: trig });
+      }
+    }
+    const party = fromISO(addDays(t, -8));
+    party.setHours(23, 40, 0, 0);
+    smoke.push({ type: 'craving', at: party.getTime() - 6e5, resisted: false, strength: 3, trigger: 'party' });
+    smoke.push({ type: 'slip', at: party.getTime(), count: 2, trigger: 'party' });
+    smoke.forEach((e, i) => Object.assign(e, { id: `demo-s-${i}`, date: iso(new Date(e.at)), demo: true, createdAt: now, updatedAt: now }));
+  }
+
   journal.forEach((e) => S.journal.set(e.date, e));
   sleep.forEach((e) => S.sleep.set(e.date, e));
   events.forEach((e) => S.events.set(e.id, e));
@@ -200,16 +239,42 @@ export async function loadDemo() {
     if (!S.weights.has(e.date)) S.weights.set(e.date, e);
   });
   S.foodlib.set(fav.id, fav);
+  smoke.forEach((e) => S.smoke.set(e.id, e));
   reindexFood();
+  reindexSmoke();
   await putMany('journal', journal);
   await putMany('sleep', sleep);
   await putMany('events', events);
   await putMany('food', food);
   await putMany('weights', weights.filter((w) => S.weights.get(w.date) === w));
   await putMany('foodlib', [fav]);
+  await putMany('smokelog', smoke);
   const patch = { demoLoaded: true };
+  if (smokeSet) {
+    patch.smoke = {
+      ...S.settings.smoke,
+      setup: true,
+      demo: true,
+      kind: 'zigaretten',
+      perDay: 12,
+      packPrice: 9.5,
+      perPack: 20,
+      currency: 'CHF',
+      mode: 'stop',
+      quitAt: quit.getTime(),
+      planStart: null,
+      reasons: ['fussball', 'geld', 'freiheit'],
+      reasonText: 'Ich will in der zweiten Halbzeit noch genauso viel laufen können wie in der ersten.',
+      goalName: 'Neue Fußballschuhe',
+      goalPrice: 180,
+      attempts: [{ from: quit.getTime() - 40 * 864e5, to: quit.getTime() - 34 * 864e5 }],
+      prep: [],
+    };
+  }
   if (!n.setup) {
     patch.nutrition = { ...n, setup: true, demo: true, sex: 'm', age: 21, height: 182, startWeight: 57.2, goalWeight: 66, activity: 'normal', trainingDays: [2, 4, 6], trainingKcal: 600, surplus: 400 };
   }
   await saveSettings(patch);
+  // In der Vorschau nicht alle Erfolge auf einmal feiern
+  if (smokeSet) await saveSmokeSettings({ seen: badges().filter((b) => b.ok).map((b) => b.id) });
 }
